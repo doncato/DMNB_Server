@@ -3,7 +3,7 @@
 # Info
 This is the Server instance of the 'Dead Man Notification Beacon' Project.
 
-The main Documentation will be available here.
+The main Documentation will be available [here](https://github.com/doncato/DMNB_ServerRelais/wiki).
 
 To find a possible client check out https://github.com/doncato/DMNB_Client_BeaconEmitter
 
