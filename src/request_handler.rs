@@ -62,7 +62,7 @@ pub mod handler {
     pub async fn run() -> std::io::Result<()> {
         // Init Database
         // TODO: Read this path from a config file!
-        let state = AppState { db_path: "/extern/prog/rust/dmnb_server_relais/dmnb.sqlite".to_string() };
+        let state = AppState { db_path: "<path/to/db.sqlite>".to_string() };
 
         HttpServer::new(move || {
             App::new()
