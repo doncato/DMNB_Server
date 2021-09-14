@@ -34,7 +34,7 @@ pub mod state_functions {
         }
         fn log_audit(&self, user: &User) -> Result<(), std::io::Error> {
             // TODO: Read this path from a config file!
-            let logpath = "/extern/prog/rust/dmnb_server_relais/auditlogs/";
+            let logpath = "./auditlogs/";
             let fullpath = format!("{}{}.log", logpath, user.clone().id);
             let mut file = OpenOptions::new()
                 .read(true)
