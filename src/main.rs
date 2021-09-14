@@ -20,7 +20,7 @@ use env_logger::Builder;
 
 fn main() {
     // TODO: Read this path from a config file!
-    let database_path = "/extern/prog/rust/dmnb_server_relais/dmnb.sqlite";
+    let database_path = "./dmnb.sqlite";
     // Build Logger
     Builder::new()
         .format(|buf, record| {
