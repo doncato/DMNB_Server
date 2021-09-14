@@ -1,9 +1,13 @@
 pub mod handler {
     use crate::data_handler::sqlite_handler::{
-        DatabaseState, User,
+        DatabaseState,
     };
     use crate::state_engine::state_functions::{
         self, Payload,
+    };
+
+    use std::{
+        sync::mpsc::{Sender},
     };
     use actix_web::{
         middleware::Logger,
@@ -35,20 +39,19 @@ pub mod handler {
         };
 
         let db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone()).expect("Failed to connect to Database!");
-        match User::get_by_id(&db, auth_id.to_string()) {
+        let user = match db.get_by_id(&auth_id.to_string()) {
             Ok(val) => match val {
-                Some(_) => true,
+                Some(u) => u,
                 None => return HttpResponse::Unauthorized().body("401"),
             },
             Err(_) => return HttpResponse::InternalServerError().body("500"),
         };
-        db.kill().expect("Failed to close database!");
 
         match ntype {
             "0" => return state_functions::test(),
-            "1" => return state_functions::audit(info),
-            "2" => return state_functions::sign(info),
-            "3" => return state_functions::ilive(info),
+            "1" => return state_functions::audit(user, req.app_data::<AppState>().unwrap().tx.clone(), info),
+            "2" => return state_functions::sign(user, db, info),
+            "3" => return state_functions::ilive(user, db, req.app_data::<AppState>().unwrap().tx.clone(), info),
             "4" => return state_functions::stat(),
              _  => return HttpResponse::NotFound().body("404"),
         }
@@ -57,12 +60,12 @@ pub mod handler {
     #[derive(Debug, Clone)]
     pub struct AppState {
         db_path: String,
+        tx: Sender<(String, u32)>
     }
     #[actix_web::main]
-    pub async fn run() -> std::io::Result<()> {
+    pub async fn run(database_path: String, time_state_transmitter: Sender<(String, u32)>) -> std::io::Result<()> {
         // Init Database
-        // TODO: Read this path from a config file!
-        let state = AppState { db_path: "<path/to/db.sqlite>".to_string() };
+        let state = AppState { db_path: database_path, tx: time_state_transmitter };
 
         HttpServer::new(move || {
             App::new()
