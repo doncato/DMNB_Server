@@ -1,22 +1,21 @@
 pub mod state_functions {
     #![allow(non_snake_case)]
 
-    use crate::data_handler::sqlite_handler::{
-        DatabaseState, User,
-    };
+    use crate::data_handler::sqlite_handler::{DatabaseState, User};
 
-    use std::{
-        convert::{TryFrom, TryInto},
-        sync::mpsc::{Sender},
-        fs::{OpenOptions},
-        io::{BufReader, prelude::*},
-        collections::HashMap,
-    };
+    use actix_web::{web, HttpResponse};
     use chrono::{DateTime, Local, Utc};
     use linecount::count_lines;
-    use actix_web::{HttpResponse, web};
-    use serde_derive::{Serialize, Deserialize};
+    use serde_derive::{Deserialize, Serialize};
     use serde_json;
+    use std::{
+        collections::HashMap,
+        convert::{TryFrom, TryInto},
+        fs::OpenOptions,
+        io::{prelude::*, BufReader},
+        sync::mpsc::Sender,
+    };
+    use sysinfo::{System, SystemExt};
 
     #[derive(Serialize, Deserialize)]
     pub struct Payload {
@@ -34,7 +33,7 @@ pub mod state_functions {
         }
         fn log_audit(&self, user: &User) -> Result<(), std::io::Error> {
             // TODO: Read this path from a config file!
-            let logpath = "./auditlogs/";
+            let logpath = "/extern/prog/rust/dmnb_server_relais/auditlogs/";
             let fullpath = format!("{}{}.log", logpath, user.clone().id);
             let mut file = OpenOptions::new()
                 .read(true)
@@ -45,16 +44,15 @@ pub mod state_functions {
 
             let lines = BufReader::new(&file).lines();
 
-            let linec_diff = (count_lines(std::fs::File::open(&fullpath)?)? as isize - 249) as usize;
-            let mut content = if  linec_diff > 0 {
+            let linec_diff =
+                (count_lines(std::fs::File::open(&fullpath)?)? as isize - 249) as usize;
+            let mut content = if linec_diff > 0 {
                 lines
                     .skip(linec_diff)
                     .map(|x| x.unwrap())
                     .collect::<Vec<String>>()
             } else {
-                lines
-                    .map(|x| x.unwrap())
-                    .collect::<Vec<String>>()
+                lines.map(|x| x.unwrap()).collect::<Vec<String>>()
             };
 
             let utc_time = DateTime::<Utc>::from_utc(Local::now().naive_utc(), Utc);
@@ -65,8 +63,14 @@ pub mod state_functions {
             // %u UTC Time at the time of the log entry
             // %d Seconds since the client sent the request
             // %l [Latitude, Longitude, other]
-            // %o {"key": ["values"], "key": ["values"], ...} 
-            let new_line = format!("{} {} - {:?}; {:?}\n", utc_time, time_diff, self.L.as_ref().unwrap_or(&vec!["-".to_string()]), self.O.as_ref().unwrap_or(&HashMap::new()));
+            // %o {"key": ["values"], "key": ["values"], ...}
+            let new_line = format!(
+                "{} {} - {:?}; {:?}\n",
+                utc_time,
+                time_diff,
+                self.L.as_ref().unwrap_or(&vec!["-".to_string()]),
+                self.O.as_ref().unwrap_or(&HashMap::new())
+            );
             content.push(new_line);
 
             file.write(content.join("\n").as_bytes())?;
@@ -75,11 +79,11 @@ pub mod state_functions {
             Ok(())
         }
     }
-    fn is_positive(timestamp: &Option<u32>) -> bool{
+    fn is_positive(timestamp: &Option<u32>) -> bool {
         let utc_time = DateTime::<Utc>::from_utc(Local::now().naive_utc(), Utc);
         let time_diff = utc_time.timestamp() - timestamp.unwrap_or(0) as i64;
         if time_diff < 0 {
-            return false
+            return false;
         }
         true
     }
@@ -94,46 +98,54 @@ pub mod state_functions {
             Tp: None,
             Td: None,
             L: None,
-            O: Some(ot)
+            O: Some(ot),
         };
         pl.log_audit(user)?;
         Ok(())
     }
 
     pub fn test() -> HttpResponse {
-        HttpResponse::Ok().body("200")
+        HttpResponse::Ok().body("200 - Auth Successful")
     }
-    pub fn audit(user: User, tx: Sender<(String, u32)>, payload: web::Json<Payload>) -> HttpResponse {
+    pub fn audit(
+        user: User,
+        tx: Sender<(String, u32)>,
+        payload: web::Json<Payload>,
+    ) -> HttpResponse {
         if !is_positive(&payload.T) {
-            return HttpResponse::BadRequest().body("400 - Timestamp can't come from the future")
+            return HttpResponse::BadRequest().body("400 - Timestamp can't come from the future");
         }
 
         let timestamp: u32 = match payload.Td {
-            Some(time) => u32::try_from(chrono::offset::Utc::now().timestamp()).expect("Time went backwards") + time,
+            Some(time) => {
+                u32::try_from(chrono::offset::Utc::now().timestamp()).expect("Time went backwards")
+                    + time
+            }
             None => 0,
         };
         if let Err(err) = tx.send((user.id.clone(), timestamp)) {
             log::error!("{}", err);
-            return HttpResponse::InternalServerError().body("500 - Failed to Sync User Expiring Time")
+            return HttpResponse::InternalServerError()
+                .body("500 - Failed to Sync User Expiring Time");
         }
 
         if let Err(err) = payload.log_audit(&user) {
             log::error!("{}", err);
-            return HttpResponse::InternalServerError().body("500 - Failed to Log the Request")
+            return HttpResponse::InternalServerError().body("500 - Failed to Log the Request");
         };
 
         HttpResponse::Ok().body("200 - OK")
     }
     pub fn sign(user: User, db: DatabaseState, payload: web::Json<Payload>) -> HttpResponse {
         if !is_positive(&payload.T) {
-            return HttpResponse::BadRequest().body("400 - Timestamp can't come from the future")
+            return HttpResponse::BadRequest().body("400 - Timestamp can't come from the future");
         }
 
         match payload.log_audit(&user) {
             Err(err) => {
                 log::error!("{}", err);
-                return HttpResponse::InternalServerError().body("500 - Failed to Log the Request")
-            },
+                return HttpResponse::InternalServerError().body("500 - Failed to Log the Request");
+            }
             _ => (),
         };
 
@@ -141,52 +153,92 @@ pub mod state_functions {
             Ok(val) => val,
             Err(err) => {
                 log::error!("{}", err);
-                return HttpResponse::InternalServerError().body("500 - Failed to Update Database")
-            },
+                return HttpResponse::InternalServerError().body("500 - Failed to Update Database");
+            }
         } {
-            return HttpResponse::Conflict().body("409 - You are marked as deceased")
+            return HttpResponse::Conflict().body("409 - You are marked as deceased");
         };
 
-
-        
         db.kill().expect("Failed to close database!");
         HttpResponse::Ok().body("200")
     }
-    pub fn ilive(user: User, db: DatabaseState, tx: Sender<(String, u32)>, payload: web::Json<Payload>) -> HttpResponse {
+    pub fn ilive(
+        user: User,
+        db: DatabaseState,
+        tx: Sender<(String, u32)>,
+        payload: web::Json<Payload>,
+    ) -> HttpResponse {
         if !is_positive(&payload.T) {
-            return HttpResponse::BadRequest().body("400 - Timestamp can't come from the future")
+            return HttpResponse::BadRequest().body("400 - Timestamp can't come from the future");
         }
 
         let timestamp: u32 = match payload.Td {
-            Some(time) => u32::try_from(chrono::offset::Utc::now().timestamp()).expect("Time went backwards") + time,
+            Some(time) => {
+                u32::try_from(chrono::offset::Utc::now().timestamp()).expect("Time went backwards")
+                    + time
+            }
             None => 0,
         };
         if let Err(err) = tx.send((user.id.clone(), timestamp)) {
             log::error!("{}", err);
-            return HttpResponse::InternalServerError().body("500 - Failed to Sync User Expiring Time")
+            return HttpResponse::InternalServerError()
+                .body("500 - Failed to Sync User Expiring Time");
         }
 
         if let Err(err) = payload.log_audit(&user) {
             log::error!("{}", err);
-            return HttpResponse::InternalServerError().body("500 - Failed to Log the Request")
+            return HttpResponse::InternalServerError().body("500 - Failed to Log the Request");
         };
 
         if !match db.update_state(&user.id, 0) {
             Ok(val) => val,
             Err(err) => {
                 log::error!("{}", err);
-                return HttpResponse::InternalServerError().body("500 - Failed to Update Database")
-            },
+                return HttpResponse::InternalServerError().body("500 - Failed to Update Database");
+            }
         } {
-            return HttpResponse::Conflict().body("409 - You are marked as deceased")
+            return HttpResponse::Conflict().body("409 - You are marked as deceased");
         };
 
-
-        
         db.kill().expect("Failed to close database!");
         HttpResponse::Ok().body("200")
     }
-    pub fn stat() -> HttpResponse {
-        HttpResponse::Ok().body("200")
+
+    #[derive(Serialize, Deserialize)]
+    struct Response {
+        Hostname: String,
+        Description: String,
+        Account: String,
+        Uptime: u32,
+        Maintenace: i64,
+    }
+    impl Response {
+        fn new(
+            Description: String,
+            Account_Email: String,
+            Uptime: u32,
+            Maintenace: i64,
+        ) -> Response {
+            Response {
+                Hostname: {
+                    let s = System::new();
+                    s.host_name().unwrap_or("".to_string())
+                },
+                Description: Description,
+                Account: Account_Email,
+                Uptime: Uptime,
+                Maintenace: Maintenace,
+            }
+        }
+    }
+
+    pub fn stat(user: User, init_time: u32) -> HttpResponse {
+        let now: u32 = chrono::offset::Utc::now()
+            .timestamp()
+            .try_into()
+            .expect("Time went backwards");
+        let diff = now - init_time;
+        let r = Response::new("".to_string(), user.email, diff, -1);
+        HttpResponse::Ok().body(serde_json::to_string(&r).unwrap_or("{}".to_string()))
     }
 }
