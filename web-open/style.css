@@ -1,0 +1,30 @@
+body {
+    font-family: "Open Sans";
+    font-size: 26px;
+    color: #c1c1c1;
+    background-color: #202020;
+}
+h2 {
+    text-align: center;
+}
+
+.small {
+    font-size: 12px;
+}
+
+.center {
+    position:absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.box {
+    position:absolute;
+    top: 25%;
+    left: 25%;
+    background-color: #1149A9;
+    width: 50vw;
+    height: 50vh;
+    border-radius: 24px;
+}

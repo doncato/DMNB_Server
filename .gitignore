@@ -1,0 +1,9 @@
+# Ignore target
+/target
+/target/*
+# Ignore Cargo.lock
+/Cargo.lock
+# Ignore sqlite database
+/dmnb.sqlite
+# Ignore auditlogs
+/auditlogs/*

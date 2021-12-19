@@ -224,10 +224,10 @@ pub mod state_functions {
                     let s = System::new();
                     s.host_name().unwrap_or("".to_string())
                 },
-                Description: Description,
+                Description,
                 Account: Account_Email,
-                Uptime: Uptime,
-                Maintenace: Maintenace,
+                Uptime,
+                Maintenace,
             }
         }
     }

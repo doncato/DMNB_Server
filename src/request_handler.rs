@@ -2,17 +2,65 @@ pub mod handler {
     use crate::data_handler::sqlite_handler::DatabaseState;
     use crate::state_engine::state_functions::{self, Payload};
 
+    use actix_files;
     use actix_web::{
-        get, middleware::Logger, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
+        get, middleware::Logger, post, web, App, Error, HttpRequest, HttpResponse, HttpServer,
     };
     use chrono;
     use std::{convert::TryInto, sync::mpsc::Sender};
 
+    // Serve index.html via root request
     #[get("/")]
-    async fn index() -> impl Responder {
-        HttpResponse::Ok().body("200 - Ok")
+    async fn auto_index() -> Result<actix_files::NamedFile, Error> {
+        Ok(actix_files::NamedFile::open("web-open/index.html")?)
+    }
+    // Serve login/registration
+    #[post("/auth")]
+    async fn login(req: HttpRequest, body: String) -> Result<HttpResponse, Error> {
+        let email_start = match body.find("Email=") {
+            Some(val) => val + 6,
+            None => return Ok(HttpResponse::BadRequest().body("400 - Error while parsing Email")),
+        };
+        let email_end = body[email_start..].find(" ").unwrap_or(body.len());
+        let email = body[email_start..email_end].replace("%40", "@");
+        // Check if Email is already registered
+        let db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone())
+            .expect("Failed to connect to Database!");
+        match match db.get_by_email(&email) {
+            Ok(val) => val,
+            Err(err) => {
+                return Ok(HttpResponse::InternalServerError()
+                    .body(format!("500 - Failed to interact with Database\n{}", err)))
+            }
+        } {
+            Some(_) => match actix_files::NamedFile::open("web-hidden/login.html") {
+                Ok(val) => return val.into_response(&req),
+                Err(err) => {
+                    return Ok(HttpResponse::InternalServerError()
+                        .body(format!("500 - Failed to load Site\n{}", err)))
+                }
+            },
+            None => match actix_files::NamedFile::open("web-hidden/register.html") {
+                Ok(val) => return val.into_response(&req),
+                Err(err) => {
+                    return Ok(HttpResponse::InternalServerError()
+                        .body(format!("500 - Failed to load Site\n{}", err)))
+                }
+            },
+        };
+    }
+    // Serve dashboard
+    // ...
+    // Serve static files in web
+    #[get("/*")]
+    async fn index(req: HttpRequest) -> Result<actix_files::NamedFile, Error> {
+        Ok(actix_files::NamedFile::open(format!(
+            "web-open/{}",
+            req.path()
+        ))?)
     }
 
+    // Serve API Backend
     #[post("/api")]
     async fn callback(req: HttpRequest, info: web::Json<Payload>) -> HttpResponse {
         // Parse the Auth header from the request and return 401 if the header is not present or not readable.
@@ -91,7 +139,9 @@ pub mod handler {
         HttpServer::new(move || {
             App::new()
                 .app_data(state.clone())
+                .service(auto_index)
                 .service(index)
+                .service(login)
                 .service(callback)
                 .wrap(Logger::new("%{r}a - [%tUTC] %r | %s %b "))
         })
