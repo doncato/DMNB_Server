@@ -3,6 +3,7 @@ pub mod handler {
     use crate::state_engine::state_functions::{self, Payload};
 
     use actix_files;
+    use actix_session::{CookieSession, Session};
     use actix_web::{
         get, middleware::Logger, post, web, App, Error, HttpRequest, HttpResponse, HttpServer,
     };
@@ -16,13 +17,18 @@ pub mod handler {
     }
     // Serve login/registration
     #[post("/auth")]
-    async fn login(req: HttpRequest, body: String) -> Result<HttpResponse, Error> {
+    async fn sign_in(
+        req: HttpRequest,
+        body: String,
+        session: Session,
+    ) -> Result<HttpResponse, Error> {
         let email_start = match body.find("Email=") {
             Some(val) => val + 6,
             None => return Ok(HttpResponse::BadRequest().body("400 - No Email provided")),
         };
         let email_end = body[email_start..].find(" ").unwrap_or(body.len());
         let email = body[email_start..email_end].replace("%40", "@");
+
         // Check if Email is already registered
         let db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone())
             .expect("Failed to connect to Database!");
@@ -34,7 +40,8 @@ pub mod handler {
             }
         } {
             Some(_) => {
-                return actix_files::NamedFile::open("web-hidden/login.html")?.into_response(&req)
+                session.set("Email", email)?;
+                return actix_files::NamedFile::open("web-hidden/login.html")?.into_response(&req);
             }
             None => {
                 return actix_files::NamedFile::open("web-hidden/register.html")?
@@ -42,8 +49,66 @@ pub mod handler {
             }
         };
     }
+    // Serve login
+    #[post("/login")]
+    async fn login(
+        req: HttpRequest,
+        body: String,
+        session: Session,
+    ) -> Result<HttpResponse, Error> {
+        let token_start = match body.find("Auth-Token=") {
+            Some(val) => val + 11,
+            None => return Ok(HttpResponse::BadRequest().body("400 - No Auth-Token provided")),
+        };
+        let token_end = body[token_start..].find(" ").unwrap_or(body.len());
+        let token = body[token_start..token_end].to_string();
+
+        let email = session.get::<String>("Email")?.unwrap_or("".to_string());
+
+        let db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone())
+            .expect("Failed to connect to Database!");
+        match match db.get_by_email(&email) {
+            Ok(val) => val,
+            Err(err) => {
+                return Ok(HttpResponse::InternalServerError()
+                    .body(format!("500 - Failed to interact with Database\n{}", err)))
+            }
+        } {
+            Some(user) => {
+                if user.id == token {
+                    session.set("Auth-Token", token)?;
+                    return Ok(HttpResponse::MovedPermanently()
+                        .header("Location", "/dashboard")
+                        .finish());
+                } else {
+                    println!("TOKEN: {}", token);
+                    return Ok(HttpResponse::MovedPermanently()
+                        .header("Location", "/")
+                        .finish());
+                }
+            }
+            None => {
+                println!("EMAIL: {}", email);
+                return Ok(HttpResponse::MovedPermanently()
+                    .header("Location", "/")
+                    .finish());
+            }
+        }
+    }
     // Serve dashboard
-    // ...
+    #[get("/dashboard")]
+    async fn dashboard(req: HttpRequest, session: Session) -> Result<HttpResponse, Error> {
+        // Check if user is eligible
+        // This just checks if the fields Email and Auth-Token are set (should be safe enough)
+        let eligible = session.get::<String>("Email")?.is_some()
+            && session.get::<String>("AuthToken")?.is_some();
+        if !eligible {
+            return Ok(HttpResponse::MovedPermanently()
+                .header("Location", "/")
+                .finish());
+        }
+        return actix_files::NamedFile::open("web-hidden/dashboard.html")?.into_response(&req);
+    }
     // Serve static files in web
     #[get("/*")]
     async fn index(req: HttpRequest) -> Result<HttpResponse, Error> {
@@ -139,8 +204,16 @@ pub mod handler {
                 .app_data(state.clone())
                 .service(auto_index)
                 .service(index)
+                .service(sign_in)
                 .service(login)
+                .service(dashboard)
                 .service(callback)
+                .wrap(
+                    CookieSession::private(&[0; 32])
+                        .name("session-data")
+                        .secure(true)
+                        .expires_in(57600),
+                )
                 .wrap(Logger::new("%{r}a - [%tUTC] %r | %s %b "))
         })
         .workers(6)

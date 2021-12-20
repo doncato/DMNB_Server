@@ -24,11 +24,12 @@
     </head>
     <body>
         <div class="box">
-            <h2>DMNB - Web Interface</h2>
-            <h4>Login / Register</h4>
-            
+            <h3>DMNB - Web Interface</h3>
+            <h4>Sign In</h4>
+
             <form action="/auth" method="post" target="_self">
-                <input type="email" id="email" name="Email" placeholder="Email" class="center" required autofocus/>
+                <input class="center input" type="email" id="email" name="Email" placeholder="Email" autocomplete="username" required autofocus />
+                <input class="center submit" type="submit" value="Continue" />
             </form>
             <div class="bottom">
                 <span class="small">(If you register you'll need to verify your email)</span>

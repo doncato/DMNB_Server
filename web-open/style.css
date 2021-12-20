@@ -8,7 +8,7 @@ a, a:active, a:visited {
     text-decoration: none;
     color: #ffffff;
 }
-h2, h4 {
+h2, h3, h4 {
     text-align: center;
 }
 p {
@@ -23,13 +23,14 @@ p {
 }
 
 .center {
-    position:absolute;
-    top: 50%;
+    position: relative;
     left: 50%;
     transform: translate(-50%, -50%);
 }
 .bottom {
     position:absolute;
+    text-align: center;
+    width: 300px;
     left: 50%;
     bottom: 0%;
     transform: translate(-50%, -50%);
@@ -37,15 +38,37 @@ p {
 
 .box {
     position:absolute;
-    top: 50%;
+    top: 100px;
     left: 50%;
-    width: 50vw;
-    height: 75vh;
-    transform: translate(-50%, -50%);
-    background-color: #1149A9;
-    border-radius: 24px;
+    width: 350px;
+    height: 400px;
+    transform: translateX(-50%);
+
+    background-color: #161616;
+    border-radius: 12px;
+    border: 2px solid #121212;
+    display: inline-block;
 }
 
 .input {
-    width: 100%;
+    font-size: 16px;
+    width: 250px;
+    height: 24px;
+    background-color: #202020;
+    color: #ffffff;
+    border: 1px solid #121212;
+    border-radius: 6px;
+    margin-top: 6px;
+    margin-bottom: 6px;
+}
+.submit {
+    font-size: 16px;
+    width: 250px;
+    height: 24px;
+    background-color: #009900;
+    color: #ffffff;
+    border: 1px solid #009900;
+    border-radius: 6px;
+    margin-top: 6px;
+    margin-bottom: 6px;
 }
