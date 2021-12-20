@@ -1,12 +1,12 @@
 body {
     font-family: "Open Sans";
     font-size: 26px;
-    color: #c1c1c1;
+    color: #ffffff;
     background-color: #202020;
 }
 a, a:active, a:visited {
     text-decoration: none;
-    color: #c1c1c1;
+    color: #ffffff;
 }
 h2, h4 {
     text-align: center;
@@ -37,10 +37,15 @@ p {
 
 .box {
     position:absolute;
-    top: 25%;
-    left: 25%;
-    background-color: #1149A9;
+    top: 50%;
+    left: 50%;
     width: 50vw;
-    height: 50vh;
+    height: 75vh;
+    transform: translate(-50%, -50%);
+    background-color: #1149A9;
     border-radius: 24px;
+}
+
+.input {
+    width: 100%;
 }

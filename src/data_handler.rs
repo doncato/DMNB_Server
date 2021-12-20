@@ -258,7 +258,7 @@ mod tests {
 
         log::debug!("Testing New User Creation");
         let db =
-            DatabaseState::init("/extern/prog/rust/dmnb_server_relais/dmnb.sqlite".to_string())
+            DatabaseState::init("./dmnb.sqlite".to_string())
                 .unwrap();
         let user = db.new_one(&"foo@example.com".to_string()).unwrap();
         assert_eq!(user.email, "foo@example.com".to_string())
@@ -268,7 +268,7 @@ mod tests {
         init_logging();
         log::debug!("Creating new table called test for tesiting operation");
         let db = DatabaseState::init_with_table_name(
-            "/extern/prog/rust/dmnb_server_relais/dmnb.sqlite".to_string(),
+            "./dmnb.sqlite".to_string(),
             "test".to_string(),
         )
         .unwrap();
