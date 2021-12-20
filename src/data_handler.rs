@@ -23,7 +23,7 @@ pub mod sqlite_handler {
         /// Returns an Empty User with id 0 and empty email
         pub fn empty() -> User {
             User {
-                id: "000000000000000000000000000000000000".to_string(),
+                id: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
                 email: "".to_string(),
                 state: 10,
             } // An Empty or non-existent user / test user is ALWAYS deceased
@@ -135,7 +135,7 @@ pub mod sqlite_handler {
             let new_id = loop {
                 let gen_id: String = rand::thread_rng()
                     .sample_iter(&Alphanumeric)
-                    .take(36)
+                    .take(64)
                     .map(char::from)
                     .collect();
 

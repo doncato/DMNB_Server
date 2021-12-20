@@ -19,7 +19,7 @@ pub mod handler {
     async fn login(req: HttpRequest, body: String) -> Result<HttpResponse, Error> {
         let email_start = match body.find("Email=") {
             Some(val) => val + 6,
-            None => return Ok(HttpResponse::BadRequest().body("400 - Error while parsing Email")),
+            None => return Ok(HttpResponse::BadRequest().body("400 - No Email provided")),
         };
         let email_end = body[email_start..].find(" ").unwrap_or(body.len());
         let email = body[email_start..email_end].replace("%40", "@");
@@ -33,31 +33,29 @@ pub mod handler {
                     .body(format!("500 - Failed to interact with Database\n{}", err)))
             }
         } {
-            Some(_) => match actix_files::NamedFile::open("web-hidden/login.html") {
-                Ok(val) => return val.into_response(&req),
-                Err(err) => {
-                    return Ok(HttpResponse::InternalServerError()
-                        .body(format!("500 - Failed to load Site\n{}", err)))
-                }
-            },
-            None => match actix_files::NamedFile::open("web-hidden/register.html") {
-                Ok(val) => return val.into_response(&req),
-                Err(err) => {
-                    return Ok(HttpResponse::InternalServerError()
-                        .body(format!("500 - Failed to load Site\n{}", err)))
-                }
-            },
+            Some(_) => {
+                return actix_files::NamedFile::open("web-hidden/login.html")?.into_response(&req)
+            }
+            None => {
+                return actix_files::NamedFile::open("web-hidden/register.html")?
+                    .into_response(&req);
+            }
         };
     }
     // Serve dashboard
     // ...
     // Serve static files in web
     #[get("/*")]
-    async fn index(req: HttpRequest) -> Result<actix_files::NamedFile, Error> {
-        Ok(actix_files::NamedFile::open(format!(
-            "web-open/{}",
-            req.path()
-        ))?)
+    async fn index(req: HttpRequest) -> Result<HttpResponse, Error> {
+        let home_redirect = ["/auth", "/login", "/verify"];
+        for path in home_redirect {
+            if path == req.path() {
+                return Ok(HttpResponse::MovedPermanently()
+                    .header("Location", "/")
+                    .finish());
+            }
+        }
+        actix_files::NamedFile::open(format!("web-open/{}", req.path()))?.into_response(&req)
     }
 
     // Serve API Backend
