@@ -18,6 +18,7 @@ pub mod handler {
         if session_logged_in {
             return Ok(Some(
                 HttpResponse::MovedPermanently()
+                    .header("Cache-Control", "no-store")
                     .header("Location", "/dashboard")
                     .finish(),
             ));

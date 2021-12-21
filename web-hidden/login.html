@@ -3,6 +3,7 @@
     <head>
         <title>Dead Man Notification Beacon</title>
         <meta http-equiv="content-type" content="text/html; charset=utf-8">
+        <meta http-equiv="Expires" conter="-1">
         <meta name="author" content="doncato">
         <meta name="description" content="https://github.com/doncato/DMNB_ServerRelais">
         <meta name="keywords" content="Dead,Men,Notification,Beacon,DMNB,API,REST-API">
@@ -26,7 +27,7 @@
             <h3>DMNB - Web Interface</h3>
             <h4>Login</h4>
             <form action="/login" method="post" target="_self">
-                    <input class="center input" type="password" id="auth-token" name="Auth-Token" placeholder="Auth Token (64 characters long)" minlength="64" maxlength="64" required autofocus/>
+                    <input class="center input" type="password" id="auth-token" name="Auth-Token" placeholder="Auth Token (64 characters long)" autocomplete="current-password" minlength="64" maxlength="64" required autofocus/>
                     <input class="center submit" type="submit" value="Submit" />
             </form>
             <div class="bottom">
