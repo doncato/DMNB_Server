@@ -8,12 +8,32 @@ pub mod handler {
         get, middleware::Logger, post, web, App, Error, HttpRequest, HttpResponse, HttpServer,
     };
     use chrono;
+    use rand::Rng;
     use std::{convert::TryInto, sync::mpsc::Sender};
+
+    // HELPERS
+    fn redirect_dashboard_sign_in(session: &Session) -> Result<Option<HttpResponse>, Error> {
+        let session_logged_in = session.get::<String>("Email")?.is_some()
+            && session.get::<String>("Auth-Token")?.is_some();
+        if session_logged_in {
+            return Ok(Some(
+                HttpResponse::MovedPermanently()
+                    .header("Location", "/dashboard")
+                    .finish(),
+            ));
+        } else {
+            Ok(None)
+        }
+    }
 
     // Serve index.html via root request
     #[get("/")]
-    async fn auto_index() -> Result<actix_files::NamedFile, Error> {
-        Ok(actix_files::NamedFile::open("web-open/index.html")?)
+    async fn auto_index(req: HttpRequest, session: Session) -> Result<HttpResponse, Error> {
+        // Check if user is already logged in
+        if let Some(early_redirect) = redirect_dashboard_sign_in(&session)? {
+            return Ok(early_redirect);
+        };
+        actix_files::NamedFile::open("web-open/index.html")?.into_response(&req)
     }
     // Serve login/registration
     #[post("/auth")]
@@ -22,6 +42,11 @@ pub mod handler {
         body: String,
         session: Session,
     ) -> Result<HttpResponse, Error> {
+        // Check if user is already logged in
+        if let Some(early_redirect) = redirect_dashboard_sign_in(&session)? {
+            return Ok(early_redirect);
+        };
+
         let email_start = match body.find("Email=") {
             Some(val) => val + 6,
             None => return Ok(HttpResponse::BadRequest().body("400 - No Email provided")),
@@ -56,6 +81,10 @@ pub mod handler {
         body: String,
         session: Session,
     ) -> Result<HttpResponse, Error> {
+        // Check if user is already logged in
+        if let Some(early_redirect) = redirect_dashboard_sign_in(&session)? {
+            return Ok(early_redirect);
+        };
         let token_start = match body.find("Auth-Token=") {
             Some(val) => val + 11,
             None => return Ok(HttpResponse::BadRequest().body("400 - No Auth-Token provided")),
@@ -78,18 +107,19 @@ pub mod handler {
                 if user.id == token {
                     session.set("Auth-Token", token)?;
                     return Ok(HttpResponse::MovedPermanently()
+                        .header("Cache-Control", "no-store")
                         .header("Location", "/dashboard")
                         .finish());
                 } else {
-                    println!("TOKEN: {}", token);
                     return Ok(HttpResponse::MovedPermanently()
+                        .header("Cache-Control", "no-store")
                         .header("Location", "/")
                         .finish());
                 }
             }
             None => {
-                println!("EMAIL: {}", email);
                 return Ok(HttpResponse::MovedPermanently()
+                    .header("Cache-Control", "no-store")
                     .header("Location", "/")
                     .finish());
             }
@@ -100,21 +130,29 @@ pub mod handler {
     async fn dashboard(req: HttpRequest, session: Session) -> Result<HttpResponse, Error> {
         // Check if user is eligible
         // This just checks if the fields Email and Auth-Token are set (should be safe enough)
-        let eligible = session.get::<String>("Email")?.is_some()
-            && session.get::<String>("AuthToken")?.is_some();
-        if !eligible {
+        if !redirect_dashboard_sign_in(&session)?.is_some() {
             return Ok(HttpResponse::MovedPermanently()
+                .header("Cache-Control", "no-store")
                 .header("Location", "/")
                 .finish());
-        }
+        };
         return actix_files::NamedFile::open("web-hidden/dashboard.html")?.into_response(&req);
+    }
+    // Serve logout
+    #[get("/clear")]
+    async fn logout(session: Session) -> Result<HttpResponse, Error> {
+        session.clear();
+        return Ok(HttpResponse::MovedPermanently()
+            .header("Cache-Control", "no-store")
+            .header("Location", "/")
+            .finish());
     }
     // Serve static files in web
     #[get("/*")]
     async fn index(req: HttpRequest) -> Result<HttpResponse, Error> {
-        let home_redirect = ["/auth", "/login", "/verify"];
+        let home_redirect = ["/index", "/auth", "/login", "/verify"];
         for path in home_redirect {
-            if path == req.path() {
+            if req.path().starts_with(path) {
                 return Ok(HttpResponse::MovedPermanently()
                     .header("Location", "/")
                     .finish());
@@ -198,21 +236,34 @@ pub mod handler {
                 .try_into()
                 .expect("Time went backwards"),
         };
+        // u8 Array for private cokkie session
+        let mut rng = rand::thread_rng();
+        let mut arr = [0; 32];
+        for e in arr.iter_mut() {
+            *e = rng.gen()
+        }
+        println!("COOKIE PRIVATE KEY: {:?}", arr);
 
         HttpServer::new(move || {
             App::new()
                 .app_data(state.clone())
+                // Handle Root requests
                 .service(auto_index)
-                .service(index)
+                // Handle Sign-In, Login and Logout
                 .service(sign_in)
                 .service(login)
+                .service(logout)
+                // Handle Dashboard for logged in users
                 .service(dashboard)
+                // Handle all get requests
+                .service(index)
+                // Handle API Requests
                 .service(callback)
                 .wrap(
-                    CookieSession::private(&[0; 32])
+                    CookieSession::private(&arr)
                         .name("session-data")
                         .secure(true)
-                        .expires_in(57600),
+                        .max_age(1200),
                 )
                 .wrap(Logger::new("%{r}a - [%tUTC] %r | %s %b "))
         })
