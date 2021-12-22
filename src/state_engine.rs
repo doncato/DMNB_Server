@@ -33,7 +33,7 @@ pub mod state_functions {
         }
         fn log_audit(&self, user: &User) -> Result<(), std::io::Error> {
             // TODO: Read this path from a config file!
-            let logpath = "/extern/prog/rust/dmnb_server_relais/auditlogs/";
+            let logpath = "./auditlogs/";
             let fullpath = format!("{}{}.log", logpath, user.clone().id);
             let mut file = OpenOptions::new()
                 .read(true)
@@ -118,8 +118,7 @@ pub mod state_functions {
 
         let timestamp: u32 = match payload.Td {
             Some(time) => {
-                u32::try_from(chrono::offset::Utc::now().timestamp()).expect("Time went backwards")
-                    + time
+                u32::try_from(Utc::now().timestamp()).expect("Time went backwards") + time
             }
             None => 0,
         };
@@ -149,7 +148,7 @@ pub mod state_functions {
             _ => (),
         };
 
-        if !match db.update_state(&user.id, 10) {
+        if !match db.update_state_user(&user.id, 10) {
             Ok(val) => val,
             Err(err) => {
                 log::error!("{}", err);
@@ -174,8 +173,7 @@ pub mod state_functions {
 
         let timestamp: u32 = match payload.Td {
             Some(time) => {
-                u32::try_from(chrono::offset::Utc::now().timestamp()).expect("Time went backwards")
-                    + time
+                u32::try_from(Utc::now().timestamp()).expect("Time went backwards") + time
             }
             None => 0,
         };
@@ -190,7 +188,7 @@ pub mod state_functions {
             return HttpResponse::InternalServerError().body("500 - Failed to Log the Request");
         };
 
-        if !match db.update_state(&user.id, 0) {
+        if !match db.update_state_user(&user.id, 0) {
             Ok(val) => val,
             Err(err) => {
                 log::error!("{}", err);

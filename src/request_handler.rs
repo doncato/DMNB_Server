@@ -58,7 +58,7 @@ pub mod handler {
         // Check if Email is already registered
         let db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone())
             .expect("Failed to connect to Database!");
-        match match db.get_by_email(&email) {
+        match match db.get_user_by_email(&email) {
             Ok(val) => val,
             Err(err) => {
                 return Ok(HttpResponse::InternalServerError()
@@ -70,8 +70,15 @@ pub mod handler {
                 return actix_files::NamedFile::open("web-hidden/login.html")?.into_response(&req);
             }
             None => {
+                session.set("Email", email)?;
+                /*
                 return actix_files::NamedFile::open("web-hidden/register.html")?
                     .into_response(&req);
+                */
+                return Ok(HttpResponse::MovedPermanently()
+                    .header("Cache-Control", "no-store")
+                    .header("Location", "/register")
+                    .finish());
             }
         };
     }
@@ -97,11 +104,11 @@ pub mod handler {
 
         let db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone())
             .expect("Failed to connect to Database!");
-        match match db.get_by_email(&email) {
+        match match db.get_user_by_email(&email) {
             Ok(val) => val,
-            Err(err) => {
+            Err(_) => {
                 return Ok(HttpResponse::InternalServerError()
-                    .body(format!("500 - Failed to interact with Database\n{}", err)))
+                    .body("500 - Failed to interact with Database"))
             }
         } {
             Some(user) => {
@@ -125,6 +132,50 @@ pub mod handler {
                     .finish());
             }
         }
+    }
+    // Serve register
+    #[get("/register")]
+    async fn register(req: HttpRequest, session: Session) -> Result<HttpResponse, Error> {
+        let email = session.get::<String>("Email")?.unwrap_or("".to_string());
+        let db = DatabaseState::init_with_table_name(
+            req.app_data::<AppState>().unwrap().db_path.clone(),
+            "verification".to_string(),
+        )
+        .expect("Failed to connect to Database!");
+        let found = match db.generate_verification(email, false) {
+            Ok(val) => val,
+            Err(_) => {
+                return Ok(HttpResponse::InternalServerError()
+                    .body("500 - Failed to interact with Database"))
+            }
+        };
+        let entry = match found {
+            Some(r) => r,
+            None => {
+                return Ok(
+                    HttpResponse::Conflict().body("409 - Email already for verification submitted")
+                );
+            }
+        };
+
+        return Ok(HttpResponse::Ok().body(format!(
+            "Email: {}\nCode: {}\nLink: <a href=\"/verify/{}\" />",
+            entry.email, entry.code, entry.code
+        )));
+    }
+    #[get("/verify/{code}")]
+    async fn verify(req: HttpRequest) -> Result<HttpResponse, Error> {
+        let code: u64 = req.match_info().get("code").unwrap().parse().unwrap();
+        let user_db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone())
+            .expect("Failed to connect to Database!");
+        let veri_db = DatabaseState::init_with_table_name(
+            req.app_data::<AppState>().unwrap().db_path.clone(),
+            "verification".to_string(),
+        )
+        .expect("Failed to connect to Database!");
+        let email = veri_db.verify_verification_code(code).unwrap().unwrap();
+        let user = user_db.new_user(&email).unwrap();
+        return Ok(HttpResponse::Ok().body(format!("{}", user)));
     }
     // Serve dashboard
     #[get("/dashboard")]
@@ -151,7 +202,7 @@ pub mod handler {
     // Serve static files in web
     #[get("/*")]
     async fn index(req: HttpRequest) -> Result<HttpResponse, Error> {
-        let home_redirect = ["/index", "/auth", "/login", "/verify"];
+        let home_redirect = ["/index", "/auth", "/login"];
         for path in home_redirect {
             if req.path().starts_with(path) {
                 return Ok(HttpResponse::MovedPermanently()
@@ -181,7 +232,7 @@ pub mod handler {
 
         let db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone())
             .expect("Failed to connect to Database!");
-        let user = match db.get_by_id(&auth_id.to_string()) {
+        let user = match db.get_user_by_id(&auth_id.to_string()) {
             Ok(val) => match val {
                 Some(u) => u,
                 None => return HttpResponse::Unauthorized().body("401 - Auth Token Invalid"),
@@ -250,9 +301,11 @@ pub mod handler {
                 .app_data(state.clone())
                 // Handle Root requests
                 .service(auto_index)
-                // Handle Sign-In, Login and Logout
+                // Handle Sign-In, Login, Registraion, Verification and Logout
                 .service(sign_in)
                 .service(login)
+                .service(register)
+                .service(verify)
                 .service(logout)
                 // Handle Dashboard for logged in users
                 .service(dashboard)
