@@ -20,13 +20,31 @@ pub mod sqlite_handler {
         }
     }
     impl User {
-        /// Returns an Empty User with id 0 and empty email
+        /// Returns an Empty User with id 0 and empty email and state 10 (Deceased)
+        /// (Test Users are ALWAYS deceased)
         pub fn empty() -> User {
             User {
                 id: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
                 email: "".to_string(),
                 state: 10,
             } // An Empty or non-existent user / test user is ALWAYS deceased
+        }
+    }
+
+    #[derive(PartialEq, Debug, Clone)]
+    pub struct AwaitingVerification {
+        pub email: String,
+        pub code: usize,
+        pub expires: u64,
+    }
+    impl AwaitingVerification {
+        /// returns an Empty AwaitingVerification Entry with empty email, code 0 and expires on 0
+        pub fn empty() -> AwaitingVerification {
+            AwaitingVerification {
+                email: "".to_string(),
+                code: 000000000000000000, // 18 Digits long
+                expires: 0,
+            }
         }
     }
 
