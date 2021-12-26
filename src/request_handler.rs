@@ -12,6 +12,7 @@ pub mod handler {
     use std::{convert::TryInto, sync::mpsc::Sender};
 
     // HELPERS
+    /* This will be removed as it is part of the web-frontend
     fn redirect_dashboard_sign_in(session: &Session) -> Result<Option<HttpResponse>, Error> {
         let session_logged_in = session.get::<String>("Email")?.is_some()
             && session.get::<String>("Auth-Token")?.is_some();
@@ -26,8 +27,9 @@ pub mod handler {
             Ok(None)
         }
     }
-
+    */
     // Serve index.html via root request
+    /* This will be removed as the frontend will be seperated
     #[get("/")]
     async fn auto_index(req: HttpRequest, session: Session) -> Result<HttpResponse, Error> {
         // Check if user is already logged in
@@ -137,6 +139,9 @@ pub mod handler {
     #[get("/register")]
     async fn register(req: HttpRequest, session: Session) -> Result<HttpResponse, Error> {
         let email = session.get::<String>("Email")?.unwrap_or("".to_string());
+        if email == "".to_string() {
+            return Ok(HttpResponse::BadRequest().body("400 - Email invalid"))
+        }
         let db = DatabaseState::init_with_table_name(
             req.app_data::<AppState>().unwrap().db_path.clone(),
             "verification".to_string(),
@@ -173,9 +178,12 @@ pub mod handler {
             "verification".to_string(),
         )
         .expect("Failed to connect to Database!");
-        let email = veri_db.verify_verification_code(code).unwrap().unwrap();
-        let user = user_db.new_user(&email).unwrap();
-        return Ok(HttpResponse::Ok().body(format!("{}", user)));
+        if let Some(email) = veri_db.verify_verification_code(code).unwrap() {
+            let user = user_db.new_user(&email).unwrap();
+            return Ok(HttpResponse::Ok().body(format!("{}", user)));
+        } else {
+            return Ok(HttpResponse::Unauthorized().body("401 - Verification code invalid"))
+        }
     }
     // Serve dashboard
     #[get("/dashboard")]
@@ -200,7 +208,7 @@ pub mod handler {
             .finish());
     }
     // Serve static files in web
-    #[get("/*")]
+    #[get("/")]
     async fn index(req: HttpRequest) -> Result<HttpResponse, Error> {
         let home_redirect = ["/index", "/auth", "/login"];
         for path in home_redirect {
@@ -212,12 +220,34 @@ pub mod handler {
         }
         actix_files::NamedFile::open(format!("web-open/{}", req.path()))?.into_response(&req)
     }
+    */
 
-    // Serve API Backend
+    
+    // Serve User-Settings Settings API
+    #[post("/settings")]
+    async fn settngs(req: HttpRequest, info: web::Json<Payload>) -> HttpResponse {
+        let user_id = match match req.headers().get("User-Token") {
+            Some(auth) => auth.to_str().ok(),
+            None => return HttpResponse::Unauthorized().body("401 - No User Token Provided"),
+        } {
+            Some(auth) => auth,
+            None => return HttpResponse::Unauthorized().body("401 - No User Token Provided"),
+        };
+
+        let mtype = match req.headers().get("Message-Type") {
+            Some(val) => val.to_str().unwrap_or("0"),
+            None => "0",
+        };
+
+        let db = DatabaseState::init_with_table_name(req.app_data::<AppState>().unwrap().db_path.clone(), "settings").expect("Failed to connect to Database!");
+        
+        // TODO: Work here
+    }
+    // Serve Data API Backend
     #[post("/api")]
     async fn callback(req: HttpRequest, info: web::Json<Payload>) -> HttpResponse {
         // Parse the Auth header from the request and return 401 if the header is not present or not readable.
-        let auth_id = match match req.headers().get("Auth") {
+        let auth_id = match match req.headers().get("Auth-Token") {
             Some(auth) => auth.to_str().ok(),
             None => return HttpResponse::Unauthorized().body("401 - No Auth Token Provided"),
         } {
@@ -225,7 +255,7 @@ pub mod handler {
             None => return HttpResponse::Unauthorized().body("401 - No Auth Token Provided"),
         };
 
-        let ntype = match req.headers().get("Notification-Type") {
+        let mtype = match req.headers().get("Message-Type") {
             Some(val) => val.to_str().unwrap_or("0"),
             None => "0",
         };
@@ -243,7 +273,7 @@ pub mod handler {
             }
         };
 
-        match ntype {
+        match mtype {
             "0" => return state_functions::test(),
             "1" => {
                 return state_functions::audit(

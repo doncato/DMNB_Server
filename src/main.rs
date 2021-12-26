@@ -43,6 +43,7 @@ fn main() {
     // Spawn Thread to check whenever a message was expected and received, and delete outtimed verifications
     let (tx, rx): (Sender<(String, u32)>, Receiver<(String, u32)>) = mpsc::channel();
     thread::spawn(move || {
+        // Get the database connection
         let db = sqlite_handler::DatabaseState::init(database_path.to_string())
             .expect("Failed to connect to database");
         let verify_db = sqlite_handler::DatabaseState::init_with_table_name(
@@ -50,6 +51,10 @@ fn main() {
             "verification".to_string(),
         )
         .expect("Failed to connect to database");
+        // Create tables if not already existent
+        db.create_table_for_user().expect("Failed to create table for users");
+        verify_db.create_table_for_verification().expect("Failed to create table for verification");
+
         let mut rng = rand::thread_rng();
         let mut alltimes: HashMap<String, u32> = HashMap::new();
         loop {
