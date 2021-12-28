@@ -2,6 +2,7 @@ pub mod sqlite_handler {
     use chrono::Utc;
     use rand::{distributions::Alphanumeric, Rng};
     use rusqlite::{self, Connection};
+    use serde::Serialize;
     use std::convert::TryFrom;
     use std::fmt;
 
@@ -9,7 +10,7 @@ pub mod sqlite_handler {
     // id: A unique identifier also used as the api-key or 'username'
     // email: used for notification and sign up, as well as settings
     // state: The state of the user: -1 Unknown, 0 Normal, 10 Deceased, 15  Deceased and Notified (aka. completed)
-    #[derive(PartialEq, Debug, Clone)]
+    #[derive(Serialize, PartialEq, Debug, Clone)]
     pub struct User {
         pub id: String,
         pub email: String,
@@ -34,15 +35,20 @@ pub mod sqlite_handler {
     }
 
     #[derive(PartialEq, Debug, Clone)]
-    pub struct AwaitingVerification {
+    pub struct Verification {
         pub email: String,
         pub code: u64,
         pub expires: u32,
     }
-    impl AwaitingVerification {
-        /// returns an Empty AwaitingVerification Entry with empty email, code 0 and expires on 0
-        pub fn empty() -> AwaitingVerification {
-            AwaitingVerification {
+    impl fmt::Display for Verification {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "({}: {} - {})", self.email, self.code, self.expires)
+        }
+    }
+    impl Verification {
+        /// returns an Empty Verification Entry with empty email, code 0 and expires on 0
+        pub fn empty() -> Verification {
+            Verification {
                 email: "".to_string(),
                 code: 000000000000000000, // 18 Digits long
                 expires: 0,
@@ -103,7 +109,7 @@ pub mod sqlite_handler {
                 )?;
             Ok(())
         }
-        /// Create a new table for the User struct, if not already present
+        /// Create a new table for the Verification struct, if not already present
         pub fn create_table_for_verification(&self) -> std::result::Result<(), rusqlite::Error> {
             self.connection.execute(
                 &format!(
@@ -265,15 +271,16 @@ pub mod sqlite_handler {
             results.collect()
         }
         /// Generate a new verification entry, provide the email. Will return the generated
-        /// AwaitingVerification struct. The expiration time will be 10 minutes from now.
-        /// This function won't do anything, if the email is already present in the database.
-        /// This can be set (disabled) with `disable_double_check=false`
-        pub fn generate_verification(
+        /// Verification struct. The expiration time will be 10 minutes from now.
+        /// If `duplicate_check` is set to `true` nothing will be done if the email already
+        /// exists in the database
+        pub fn generate_verification_code(
             &self,
             email: String,
-            disable_double_check: bool,
-        ) -> std::result::Result<Option<AwaitingVerification>, rusqlite::Error> {
-            if !disable_double_check {
+            duplicate_check: bool,
+        ) -> std::result::Result<Option<Verification>, rusqlite::Error> {
+            if duplicate_check {
+                // Do nothing if an email is found
                 if self.get_verification_by_email(&email)?.is_some() {
                     return Ok(None);
                 }
@@ -286,7 +293,7 @@ pub mod sqlite_handler {
                     self.table_name, gen_code
                 ))?;
                 let mut results = check_code.query_map([], |row| {
-                    Ok(AwaitingVerification {
+                    Ok(Verification {
                         email: row.get(0)?,
                         code: row.get(1)?,
                         expires: row.get(2)?,
@@ -307,7 +314,7 @@ pub mod sqlite_handler {
 
             let expires: u32 =
                 u32::try_from(Utc::now().timestamp()).expect("Time went backwards") + 600;
-            let r = AwaitingVerification {
+            let r = Verification {
                 email,
                 code,
                 expires,
@@ -327,13 +334,13 @@ pub mod sqlite_handler {
         pub fn get_verification_by_email(
             &self,
             email: &String,
-        ) -> Result<Option<AwaitingVerification>, rusqlite::Error> {
+        ) -> Result<Option<Verification>, rusqlite::Error> {
             let mut q = self.connection.prepare(&format!(
                 "SELECT email, code, expires FROM {} WHERE email = (?)",
                 self.table_name
             ))?;
             let mut results = q.query_map([email], |row| {
-                Ok(AwaitingVerification {
+                Ok(Verification {
                     email: row.get(0)?,
                     code: row.get(1)?,
                     expires: row.get(2)?,
@@ -345,7 +352,7 @@ pub mod sqlite_handler {
             }
         }
         /// Verfies a given code. Returns None if the code is invalid. If the code is valid the
-        /// AwaitingVerification object is queried and the associated email is returned.
+        /// Verification object is queried, removed from the database and the associated email is returned.
         pub fn verify_verification_code(
             self,
             code: u64,
@@ -355,7 +362,7 @@ pub mod sqlite_handler {
                 self.table_name
             ))?;
             let mut results = q.query_map([code.to_string()], |row| {
-                Ok(AwaitingVerification {
+                Ok(Verification {
                     email: row.get(0)?,
                     code: row.get(1)?,
                     expires: row.get(2)?,

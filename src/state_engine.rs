@@ -2,6 +2,7 @@ pub mod state_functions {
     #![allow(non_snake_case)]
 
     use crate::data_handler::sqlite_handler::{DatabaseState, User};
+    use crate::request_handler::handler::ResponsePayload;
 
     use actix_web::{web, HttpResponse};
     use chrono::{DateTime, Local, Utc};
@@ -79,6 +80,7 @@ pub mod state_functions {
             Ok(())
         }
     }
+    /// Returns True if the difference between the given Timestamp and now is greater than zero
     fn is_positive(timestamp: &Option<u32>) -> bool {
         let utc_time = DateTime::<Utc>::from_utc(Local::now().naive_utc(), Utc);
         let time_diff = utc_time.timestamp() - timestamp.unwrap_or(0) as i64;
@@ -105,7 +107,7 @@ pub mod state_functions {
     }
 
     pub fn test() -> HttpResponse {
-        HttpResponse::Ok().body("200 - Auth Successful")
+        HttpResponse::Ok().json(ResponsePayload::new_static_message(200, "Auth Successful"))
     }
     pub fn audit(
         user: User,
@@ -113,7 +115,11 @@ pub mod state_functions {
         payload: web::Json<Payload>,
     ) -> HttpResponse {
         if !is_positive(&payload.T) {
-            return HttpResponse::BadRequest().body("400 - Timestamp can't come from the future");
+            return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(400, "Timestamp can't be from the future"))
+        }
+
+        if user.state >= 10 {
+            return HttpResponse::Conflict().json(ResponsePayload::new_static_message(409, "You are marked as deceased"))
         }
 
         let timestamp: u32 = match payload.Td {
@@ -124,42 +130,41 @@ pub mod state_functions {
         };
         if let Err(err) = tx.send((user.id.clone(), timestamp)) {
             log::error!("{}", err);
-            return HttpResponse::InternalServerError()
-                .body("500 - Failed to Sync User Expiring Time");
+            return HttpResponse::InternalServerError().json(ResponsePayload::status_500())
         }
 
         if let Err(err) = payload.log_audit(&user) {
             log::error!("{}", err);
-            return HttpResponse::InternalServerError().body("500 - Failed to Log the Request");
+            return HttpResponse::InternalServerError().json(ResponsePayload::status_500())
         };
 
-        HttpResponse::Ok().body("200 - OK")
+        HttpResponse::Ok().json(ResponsePayload::status_200())
     }
     pub fn sign(user: User, db: DatabaseState, payload: web::Json<Payload>) -> HttpResponse {
         if !is_positive(&payload.T) {
-            return HttpResponse::BadRequest().body("400 - Timestamp can't come from the future");
+            return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(400, "Timestamp can't be from the future"))
         }
-
-        match payload.log_audit(&user) {
-            Err(err) => {
-                log::error!("{}", err);
-                return HttpResponse::InternalServerError().body("500 - Failed to Log the Request");
-            }
-            _ => (),
-        };
 
         if !match db.update_state_user(&user.id, 10) {
             Ok(val) => val,
             Err(err) => {
                 log::error!("{}", err);
-                return HttpResponse::InternalServerError().body("500 - Failed to Update Database");
+                return HttpResponse::InternalServerError().json(ResponsePayload::status_500())
             }
         } {
-            return HttpResponse::Conflict().body("409 - You are marked as deceased");
+            return HttpResponse::Conflict().json(ResponsePayload::new_static_message(409, "You are marked as deceased"))
+        };
+
+        match payload.log_audit(&user) {
+            Err(err) => {
+                log::error!("{}", err);
+                return HttpResponse::InternalServerError().json(ResponsePayload::status_500())
+            }
+            _ => (),
         };
 
         db.kill().expect("Failed to close database!");
-        HttpResponse::Ok().body("200")
+        HttpResponse::Ok().json(ResponsePayload::status_200())
     }
     pub fn ilive(
         user: User,
@@ -168,7 +173,7 @@ pub mod state_functions {
         payload: web::Json<Payload>,
     ) -> HttpResponse {
         if !is_positive(&payload.T) {
-            return HttpResponse::BadRequest().body("400 - Timestamp can't come from the future");
+            return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(400, "Timestamp can't be from the future"))
         }
 
         let timestamp: u32 = match payload.Td {
@@ -177,29 +182,30 @@ pub mod state_functions {
             }
             None => 0,
         };
-        if let Err(err) = tx.send((user.id.clone(), timestamp)) {
-            log::error!("{}", err);
-            return HttpResponse::InternalServerError()
-                .body("500 - Failed to Sync User Expiring Time");
-        }
-
-        if let Err(err) = payload.log_audit(&user) {
-            log::error!("{}", err);
-            return HttpResponse::InternalServerError().body("500 - Failed to Log the Request");
-        };
-
+        // Update the state of the user
         if !match db.update_state_user(&user.id, 0) {
             Ok(val) => val,
             Err(err) => {
                 log::error!("{}", err);
-                return HttpResponse::InternalServerError().body("500 - Failed to Update Database");
+                return HttpResponse::InternalServerError().json(ResponsePayload::status_500())
             }
         } {
-            return HttpResponse::Conflict().body("409 - You are marked as deceased");
+            return HttpResponse::Conflict().json(ResponsePayload::new_static_message(409, "You are marked as deceased"))
+        };
+        // Send the expected time to the thread in main.rs to collect outtimed users
+        if let Err(err) = tx.send((user.id.clone(), timestamp)) {
+            log::error!("{}", err);
+            return HttpResponse::InternalServerError().json(ResponsePayload::status_500())
+        }
+        // Log this
+        if let Err(err) = payload.log_audit(&user) {
+            log::error!("{}", err);
+            return HttpResponse::InternalServerError().json(ResponsePayload::status_500())
         };
 
+
         db.kill().expect("Failed to close database!");
-        HttpResponse::Ok().body("200")
+        HttpResponse::Ok().json(ResponsePayload::status_200())
     }
 
     #[derive(Serialize, Deserialize)]
@@ -237,6 +243,6 @@ pub mod state_functions {
             .expect("Time went backwards");
         let diff = now - init_time;
         let r = Response::new("".to_string(), user.email, diff, -1);
-        HttpResponse::Ok().body(serde_json::to_string(&r).unwrap_or("{}".to_string()))
+        HttpResponse::Ok().json(r)
     }
 }

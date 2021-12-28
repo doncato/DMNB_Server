@@ -40,7 +40,7 @@ fn main() {
 
     log::info!("Started");
 
-    // Spawn Thread to check whenever a message was expected and received, and delete outtimed verifications
+    // Spawn Thread to check whenever a message was expected and received, and delete outtimed user-settings-token
     let (tx, rx): (Sender<(String, u32)>, Receiver<(String, u32)>) = mpsc::channel();
     thread::spawn(move || {
         // Get the database connection
@@ -96,10 +96,10 @@ fn main() {
                     log::debug!("USER {} just outtimed and was marked as `deceased`", id);
                 }
             }
-            // Verification System will only happen with a propability of 1:1000 to not overload the
+            // User-Settings Tokens will only be deleted with a propability of 1:5000 to not overload the
             // database (might be wrong reasoning). In any case expiration should be checked when
             // the key is submitted by the user.
-            if rng.gen_range(0..1000) == 1 {
+            if rng.gen_range(0..5000) == 1 {
                 if let Err(e) = verify_db.delete_outtimed_verifications() {
                     log::error!("Failed to update verifications!\n: {}", e);
                 }
