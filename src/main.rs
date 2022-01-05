@@ -52,8 +52,11 @@ fn main() {
         )
         .expect("Failed to connect to database");
         // Create tables if not already existent
-        db.create_table_for_user().expect("Failed to create table for users");
-        verify_db.create_table_for_verification().expect("Failed to create table for verification");
+        db.create_table_for_user()
+            .expect("Failed to create table for users");
+        verify_db
+            .create_table_for_verification()
+            .expect("Failed to create table for verification");
 
         let mut rng = rand::thread_rng();
         let mut alltimes: HashMap<String, u32> = HashMap::new();

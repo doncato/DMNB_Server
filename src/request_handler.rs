@@ -1,10 +1,11 @@
 pub mod handler {
-    use crate::sqlite_handler::User;
     use crate::data_handler::sqlite_handler::DatabaseState;
+    use crate::sqlite_handler::User;
     use crate::state_engine::state_functions::{self, Payload};
+    use crate::state_functions::ServerStatus;
 
     use actix_web::{
-        middleware::Logger, get, post, web, App, HttpRequest, HttpResponse, HttpServer
+        get, middleware::Logger, post, web, App, HttpRequest, HttpResponse, HttpServer,
     };
     use chrono;
     use rand::Rng;
@@ -12,42 +13,59 @@ pub mod handler {
     use std::{convert::TryInto, sync::mpsc::Sender};
 
     #[derive(Serialize)]
-    pub enum types {
+    pub enum Types {
         Message(String),
-        User(User),
+        User(User),           // As defined in src/data_handler.rs
+        Status(ServerStatus), // As defined in src/state_engine.rs
     }
 
     #[derive(Serialize)]
     pub struct ResponsePayload {
         status: u16,
-        content: types,
+        content: Types,
     }
     impl ResponsePayload {
         /// Create a new ResponsePayload with given Status code and given content
-        pub fn new(status: u16, content: types) -> ResponsePayload {
-            ResponsePayload {status, content}
+        pub fn new(status: u16, content: Types) -> ResponsePayload {
+            ResponsePayload { status, content }
         }
         /// Create a new ResponsePayload with given Status code and given Message string
         pub fn new_message(status: u16, message: String) -> ResponsePayload {
-            ResponsePayload {status, content: types::Message(message)}
+            ResponsePayload {
+                status,
+                content: Types::Message(message),
+            }
         }
         /// Create a new ResponsePayload with given Status code and given Message slice
         pub fn new_static_message(status: u16, message: &str) -> ResponsePayload {
-            ResponsePayload {status, content: types::Message(message.to_string())}
+            ResponsePayload {
+                status,
+                content: Types::Message(message.to_string()),
+            }
         }
         /// Create a new ResponsePayload with Status 200 and standardized Message
         pub fn status_200() -> ResponsePayload {
-            ResponsePayload {status: 200, content: types::Message("Ok".to_string())}
+            ResponsePayload {
+                status: 200,
+                content: Types::Message("Ok".to_string()),
+            }
         }
         /// Create a new ResponsePayload with Status 400 and standardized message
         pub fn status_400() -> ResponsePayload {
-            ResponsePayload {status: 400, content: types::Message("Bad Request".to_string())}
+            ResponsePayload {
+                status: 400,
+                content: Types::Message("Bad Request".to_string()),
+            }
         }
         /// Create a new ResponsePayload with Status 500 and standardized message
         pub fn status_500() -> ResponsePayload {
-            ResponsePayload {status: 500, content: types::Message("Internal Server Error\nPlease try again later".to_string())}
+            ResponsePayload {
+                status: 500,
+                content: Types::Message(
+                    "Internal Server Error\nPlease try again later".to_string(),
+                ),
+            }
         }
-        
     }
 
     // Serve Register API
@@ -55,16 +73,30 @@ pub mod handler {
     async fn register(req: HttpRequest) -> HttpResponse {
         let email = match match req.headers().get("Email") {
             Some(val) => val.to_str().ok(),
-            None => return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(400, "No Email provided")),
+            None => {
+                return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(
+                    400,
+                    "No Email provided",
+                ))
+            }
         } {
             Some(email) => email,
-            None => return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(400, "No Email provided")),
+            None => {
+                return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(
+                    400,
+                    "No Email provided",
+                ))
+            }
         };
         // Check if Email is already in user database
-        let db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone()).expect("Failed to connect to database!");
+        let db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone())
+            .expect("Failed to connect to database!");
         if let Ok(user) = db.get_user_by_email(&email.to_string()) {
             if user.is_some() {
-                return HttpResponse::Conflict().json(ResponsePayload::new_static_message(409, "Email already registered"))
+                return HttpResponse::Conflict().json(ResponsePayload::new_static_message(
+                    409,
+                    "Email already registered",
+                ));
             }
         }
 
@@ -77,12 +109,18 @@ pub mod handler {
             if let Some(code) = obj {
                 println!("{}", code);
                 // TODO: Send code via email
-                return HttpResponse::Ok().json(ResponsePayload::new_static_message(200, "Awaiting verification"))
+                return HttpResponse::Ok().json(ResponsePayload::new_static_message(
+                    200,
+                    "Awaiting verification",
+                ));
             } else {
-                return HttpResponse::Conflict().json(ResponsePayload::new_static_message(409, "Email already submitted"))
+                return HttpResponse::Conflict().json(ResponsePayload::new_static_message(
+                    409,
+                    "Email already submitted",
+                ));
             }
         } else {
-            return HttpResponse::InternalServerError().json(ResponsePayload::status_500())
+            return HttpResponse::InternalServerError().json(ResponsePayload::status_500());
         }
     }
     // Serve Verification Endpoint
@@ -94,29 +132,41 @@ pub mod handler {
         let veri_db = DatabaseState::init_with_table_name(
             req.app_data::<AppState>().unwrap().db_path.clone(),
             "verification".to_string(),
-        ).expect("Failed to connect to Database!");
+        )
+        .expect("Failed to connect to Database!");
 
-        if let Ok(Some(verify_obj)) = veri_db.get_verification_by_email(&email)  {
+        if let Ok(Some(verify_obj)) = veri_db.get_verification_by_email(&email) {
             if verify_obj.code == code {
                 ()
             } else {
-                return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(401, "Email and/or Code Invalid"))
+                return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(
+                    401,
+                    "Email and/or Code Invalid",
+                ));
             }
         } else {
-            return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(401, "Email and/or Code Invalid"))
+            return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(
+                401,
+                "Email and/or Code Invalid",
+            ));
         }
         // It is now verfied that email and code are corresponding
         // Next it is verified whether or not the code is valid.
         // If it it's removed from the verification db and a new user is generated
         if let Ok(Some(found_email)) = veri_db.verify_verification_code(code) {
-            let db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone()).expect("Failed to connect to Database!");
-            if let Ok(user) = db.new_user(&found_email) { // Idk why I use found_email over email here. However it shouldn't make any difference
-                return HttpResponse::Ok().json(ResponsePayload::new(200, types::User(user)))
+            let db = DatabaseState::init(req.app_data::<AppState>().unwrap().db_path.clone())
+                .expect("Failed to connect to Database!");
+            if let Ok(user) = db.new_user(&found_email) {
+                // Idk why I use found_email over email here. However it shouldn't make any difference
+                return HttpResponse::Ok().json(ResponsePayload::new(200, Types::User(user)));
             } else {
-                return HttpResponse::InternalServerError().json(ResponsePayload::status_500())
+                return HttpResponse::InternalServerError().json(ResponsePayload::status_500());
             }
         } else {
-            return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(401, "Email and/or Code Invalid"))
+            return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(
+                401,
+                "Email and/or Code Invalid",
+            ));
         }
     }
     // Serve User-Settings API
@@ -124,10 +174,20 @@ pub mod handler {
     async fn settings(req: HttpRequest, info: web::Json<Payload>) -> HttpResponse {
         let user_id = match match req.headers().get("User-Token") {
             Some(auth) => auth.to_str().ok(),
-            None => return HttpResponse::Unauthorized().json(ResponsePayload::new_static_message(401, "No User Token Provided")),
+            None => {
+                return HttpResponse::Unauthorized().json(ResponsePayload::new_static_message(
+                    401,
+                    "No User Token Provided",
+                ))
+            }
         } {
             Some(auth) => auth,
-            None => return HttpResponse::Unauthorized().json(ResponsePayload::new_static_message(401, "No User Token Provided")),
+            None => {
+                return HttpResponse::Unauthorized().json(ResponsePayload::new_static_message(
+                    401,
+                    "No User Token Provided",
+                ))
+            }
         };
 
         let mtype = match req.headers().get("Message-Type") {
@@ -137,8 +197,9 @@ pub mod handler {
 
         let db = DatabaseState::init_with_table_name(
             req.app_data::<AppState>().unwrap().db_path.clone(),
-            "verification".to_string()
-        ).expect("Failed to connect to database!");
+            "verification".to_string(),
+        )
+        .expect("Failed to connect to database!");
 
         match mtype {
             "A" => return HttpResponse::Ok().body("200 - Nothing Happened"),
@@ -147,9 +208,14 @@ pub mod handler {
             "D" => return HttpResponse::Ok().body("200 - Dummy..."),
             "E" => return HttpResponse::Ok().body("200 - Dummy..."),
             "F" => return HttpResponse::Ok().body("200 - Dummy..."),
-            _ => return HttpResponse::NotFound().json(ResponsePayload::new_static_message(404, "Message Type Invalid")),
+            _ => {
+                return HttpResponse::NotFound().json(ResponsePayload::new_static_message(
+                    404,
+                    "Message Type Invalid",
+                ))
+            }
         }
-        
+
         // TODO: Work here
     }
     // Serve Account State API
@@ -158,10 +224,20 @@ pub mod handler {
         // Parse the Auth header from the request and return 401 if the header is not present or not readable.
         let auth_id = match match req.headers().get("Auth-Token") {
             Some(auth) => auth.to_str().ok(),
-            None => return HttpResponse::Unauthorized().json(ResponsePayload::new_static_message(401, "No Auth Token Provided")),
+            None => {
+                return HttpResponse::Unauthorized().json(ResponsePayload::new_static_message(
+                    401,
+                    "No Auth Token Provided",
+                ))
+            }
         } {
             Some(auth) => auth,
-            None => return HttpResponse::Unauthorized().json(ResponsePayload::new_static_message(401, "No Auth Token Provided")),
+            None => {
+                return HttpResponse::Unauthorized().json(ResponsePayload::new_static_message(
+                    401,
+                    "No Auth Token Provided",
+                ))
+            }
         };
 
         let mtype = match req.headers().get("Message-Type") {
@@ -174,11 +250,15 @@ pub mod handler {
         let user = match db.get_user_by_id(&auth_id.to_string()) {
             Ok(val) => match val {
                 Some(u) => u,
-                None => return HttpResponse::Unauthorized().json(ResponsePayload::new_static_message(401, "Auth Token Invalid")),
+                None => {
+                    return HttpResponse::Unauthorized().json(ResponsePayload::new_static_message(
+                        401,
+                        "Auth Token Invalid",
+                    ))
+                }
             },
             Err(_) => {
-                return HttpResponse::InternalServerError()
-                .json(ResponsePayload::status_500())
+                return HttpResponse::InternalServerError().json(ResponsePayload::status_500())
             }
         };
 
@@ -203,7 +283,12 @@ pub mod handler {
             "4" => {
                 return state_functions::stat(user, req.app_data::<AppState>().unwrap().init_time)
             }
-            _ => return HttpResponse::NotFound().json(ResponsePayload::new_static_message(404, "Message Type Invalid")),
+            _ => {
+                return HttpResponse::NotFound().json(ResponsePayload::new_static_message(
+                    404,
+                    "Message Type Invalid",
+                ))
+            }
         }
     }
 
