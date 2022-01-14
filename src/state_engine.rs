@@ -1,14 +1,14 @@
 pub mod state_functions {
     #![allow(non_snake_case)]
 
-    use crate::data_handler::sqlite_handler::{DatabaseState, User};
-    use crate::request_handler::handler::{ResponsePayload, Types};
+    use crate::data::data_forms::{
+        RequestPayload, ResponsePayload, ResponsePayloadTypes, ServerStatus, User,
+    };
+    use crate::data_handler::sqlite_handler::DatabaseState;
 
     use actix_web::{web, HttpResponse};
     use chrono::{DateTime, Local, Utc};
     use linecount::count_lines;
-    use serde_derive::{Deserialize, Serialize};
-    use serde_json;
     use std::{
         collections::HashMap,
         convert::{TryFrom, TryInto},
@@ -16,23 +16,9 @@ pub mod state_functions {
         io::{prelude::*, BufReader},
         sync::mpsc::Sender,
     };
-    use sysinfo::{System, SystemExt};
 
-    #[derive(Serialize, Deserialize)]
-    pub struct Payload {
-        T: Option<u32>,
-        Tp: Option<u32>,
-        Td: Option<u32>,
-        L: Option<Vec<String>>,
-        O: Option<HashMap<String, Vec<String>>>,
-    }
-    impl Payload {
-        /// Tries to create a Payload from a given string
-        /// the string has to be encoded as JSON otherwise this function will panic!
-        pub fn from_json(content: &String) -> Payload {
-            serde_json::from_str(content).unwrap()
-        }
-        fn log_audit(&self, user: &User) -> Result<(), std::io::Error> {
+    impl RequestPayload {
+        fn log_audit(self, user: &User) -> Result<(), std::io::Error> {
             // TODO: Read this path from a config file!
             let logpath = "./auditlogs/";
             let fullpath = format!("{}{}.log", logpath, user.clone().id);
@@ -80,6 +66,7 @@ pub mod state_functions {
             Ok(())
         }
     }
+
     /// Returns True if the difference between the given Timestamp and now is greater than zero
     fn is_positive(timestamp: &Option<u32>) -> bool {
         let utc_time = DateTime::<Utc>::from_utc(Local::now().naive_utc(), Utc);
@@ -95,7 +82,7 @@ pub mod state_functions {
         let mut ot = HashMap::new();
         ot.insert("TYPE".to_string(), vec!["SYSTEM MESSAGE".to_string()]);
         ot.insert("MESSAGE".to_string(), vec![message]);
-        let pl = Payload {
+        let pl = RequestPayload {
             T: Some(time.try_into().expect("Time went backwards")),
             Tp: None,
             Td: None,
@@ -112,7 +99,7 @@ pub mod state_functions {
     pub fn audit(
         user: User,
         tx: Sender<(String, u32)>,
-        payload: web::Json<Payload>,
+        payload: web::Json<RequestPayload>,
     ) -> HttpResponse {
         if !is_positive(&payload.T) {
             return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(
@@ -146,7 +133,7 @@ pub mod state_functions {
 
         HttpResponse::Ok().json(ResponsePayload::status_200())
     }
-    pub fn sign(user: User, db: DatabaseState, payload: web::Json<Payload>) -> HttpResponse {
+    pub fn sign(user: User, db: DatabaseState, payload: web::Json<RequestPayload>) -> HttpResponse {
         if !is_positive(&payload.T) {
             return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(
                 400,
@@ -182,7 +169,7 @@ pub mod state_functions {
         user: User,
         db: DatabaseState,
         tx: Sender<(String, u32)>,
-        payload: web::Json<Payload>,
+        payload: web::Json<RequestPayload>,
     ) -> HttpResponse {
         if !is_positive(&payload.T) {
             return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(
@@ -225,34 +212,6 @@ pub mod state_functions {
         HttpResponse::Ok().json(ResponsePayload::status_200())
     }
 
-    #[derive(Serialize, Deserialize)]
-    pub struct ServerStatus {
-        Hostname: String,
-        Description: String,
-        Account: String,
-        Uptime: u32,
-        Maintenace: i64,
-    }
-    impl ServerStatus {
-        fn new(
-            Description: String,
-            Account_Email: String,
-            Uptime: u32,
-            Maintenace: i64,
-        ) -> ServerStatus {
-            ServerStatus {
-                Hostname: {
-                    let s = System::new();
-                    s.host_name().unwrap_or("".to_string())
-                },
-                Description,
-                Account: Account_Email,
-                Uptime,
-                Maintenace,
-            }
-        }
-    }
-
     pub fn stat(user: User, init_time: u32) -> HttpResponse {
         let now: u32 = chrono::offset::Utc::now()
             .timestamp()
@@ -260,6 +219,6 @@ pub mod state_functions {
             .expect("Time went backwards");
         let diff = now - init_time;
         let r = ServerStatus::new("".to_string(), user.email, diff, -1);
-        HttpResponse::Ok().json(ResponsePayload::new(200, Types::Status(r)))
+        HttpResponse::Ok().json(ResponsePayload::new(200, ResponsePayloadTypes::Status(r)))
     }
 }

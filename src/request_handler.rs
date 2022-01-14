@@ -1,72 +1,14 @@
 pub mod handler {
+    use crate::data::data_forms::{RequestPayload, ResponsePayload, ResponsePayloadTypes};
     use crate::data_handler::sqlite_handler::DatabaseState;
-    use crate::sqlite_handler::User;
-    use crate::state_engine::state_functions::{self, Payload};
-    use crate::state_functions::ServerStatus;
+    use crate::state_engine::state_functions;
 
     use actix_web::{
         get, middleware::Logger, post, web, App, HttpRequest, HttpResponse, HttpServer,
     };
     use chrono;
     use rand::Rng;
-    use serde::Serialize;
     use std::{convert::TryInto, sync::mpsc::Sender};
-
-    #[derive(Serialize)]
-    pub enum Types {
-        Message(String),
-        User(User),           // As defined in src/data_handler.rs
-        Status(ServerStatus), // As defined in src/state_engine.rs
-    }
-
-    #[derive(Serialize)]
-    pub struct ResponsePayload {
-        status: u16,
-        content: Types,
-    }
-    impl ResponsePayload {
-        /// Create a new ResponsePayload with given Status code and given content
-        pub fn new(status: u16, content: Types) -> ResponsePayload {
-            ResponsePayload { status, content }
-        }
-        /// Create a new ResponsePayload with given Status code and given Message string
-        pub fn new_message(status: u16, message: String) -> ResponsePayload {
-            ResponsePayload {
-                status,
-                content: Types::Message(message),
-            }
-        }
-        /// Create a new ResponsePayload with given Status code and given Message slice
-        pub fn new_static_message(status: u16, message: &str) -> ResponsePayload {
-            ResponsePayload {
-                status,
-                content: Types::Message(message.to_string()),
-            }
-        }
-        /// Create a new ResponsePayload with Status 200 and standardized Message
-        pub fn status_200() -> ResponsePayload {
-            ResponsePayload {
-                status: 200,
-                content: Types::Message("Ok".to_string()),
-            }
-        }
-        /// Create a new ResponsePayload with Status 400 and standardized message
-        pub fn status_400() -> ResponsePayload {
-            ResponsePayload {
-                status: 400,
-                content: Types::Message("Bad Request".to_string()),
-            }
-        }
-        /// Create a new ResponsePayload with Status 500 and standardized message
-        pub fn status_500() -> ResponsePayload {
-            ResponsePayload {
-                status: 500,
-                content: Types::Message(
-                    "Internal Server Error\nPlease try again later".to_string(),
-                ),
-            }
-        }
-    }
 
     // Serve Register API
     #[post("/api/register")]
@@ -158,7 +100,8 @@ pub mod handler {
                 .expect("Failed to connect to Database!");
             if let Ok(user) = db.new_user(&found_email) {
                 // Idk why I use found_email over email here. However it shouldn't make any difference
-                return HttpResponse::Ok().json(ResponsePayload::new(200, Types::User(user)));
+                return HttpResponse::Ok()
+                    .json(ResponsePayload::new(200, ResponsePayloadTypes::User(user)));
             } else {
                 return HttpResponse::InternalServerError().json(ResponsePayload::status_500());
             }
@@ -171,7 +114,7 @@ pub mod handler {
     }
     // Serve User-Settings API
     #[post("/api/settings")]
-    async fn settings(req: HttpRequest, info: web::Json<Payload>) -> HttpResponse {
+    async fn settings(req: HttpRequest, info: web::Json<RequestPayload>) -> HttpResponse {
         let user_id = match match req.headers().get("User-Token") {
             Some(auth) => auth.to_str().ok(),
             None => {
@@ -220,7 +163,7 @@ pub mod handler {
     }
     // Serve Account State API
     #[post("/api/infos")]
-    async fn callback(req: HttpRequest, info: web::Json<Payload>) -> HttpResponse {
+    async fn callback(req: HttpRequest, info: web::Json<RequestPayload>) -> HttpResponse {
         // Parse the Auth header from the request and return 401 if the header is not present or not readable.
         let auth_id = match match req.headers().get("Auth-Token") {
             Some(auth) => auth.to_str().ok(),

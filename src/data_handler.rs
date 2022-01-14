@@ -1,60 +1,9 @@
 pub mod sqlite_handler {
+    use crate::data::data_forms::{User, Verification};
     use chrono::Utc;
     use rand::{distributions::Alphanumeric, Rng};
     use rusqlite::{self, Connection};
-    use serde::Serialize;
     use std::convert::TryFrom;
-    use std::fmt;
-
-    // The User Object, as it's displayed in the database.
-    // id: A unique identifier also used as the api-key or 'username'
-    // email: used for notification and sign up, as well as settings
-    // state: The state of the user: -1 Unknown, 0 Normal, 10 Deceased, 15  Deceased and Notified (aka. completed)
-    #[derive(Serialize, PartialEq, Debug, Clone)]
-    pub struct User {
-        pub id: String,
-        pub email: String,
-        pub state: i8,
-    }
-
-    impl fmt::Display for User {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "({}: {})", self.id, self.email)
-        }
-    }
-    impl User {
-        /// Returns an Empty User with id 0 and empty email and state 10 (Deceased)
-        /// (Test Users are ALWAYS deceased)
-        pub fn empty() -> User {
-            User {
-                id: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-                email: "".to_string(),
-                state: 10,
-            } // An Empty or non-existent user / test user is ALWAYS deceased
-        }
-    }
-
-    #[derive(PartialEq, Debug, Clone)]
-    pub struct Verification {
-        pub email: String,
-        pub code: u64,
-        pub expires: u32,
-    }
-    impl fmt::Display for Verification {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "({}: {} - {})", self.email, self.code, self.expires)
-        }
-    }
-    impl Verification {
-        /// returns an Empty Verification Entry with empty email, code 0 and expires on 0
-        pub fn empty() -> Verification {
-            Verification {
-                email: "".to_string(),
-                code: 000000000000000000, // 18 Digits long
-                expires: 0,
-            }
-        }
-    }
 
     #[derive(Debug)]
     pub struct DatabaseState {
@@ -63,10 +12,10 @@ pub mod sqlite_handler {
     }
     impl DatabaseState {
         /// Initialize a new database state
-        pub fn init(db_path: String) -> std::result::Result<DatabaseState, rusqlite::Error> {
+        pub fn init(db_path: String) -> std::result::Result<Self, rusqlite::Error> {
             let table_name = "users".to_string();
             let connection = Connection::open(db_path)?;
-            Ok(DatabaseState {
+            Ok(Self {
                 table_name,
                 connection,
             })
@@ -75,9 +24,9 @@ pub mod sqlite_handler {
         pub fn init_with_table_name(
             db_path: String,
             table_name: String,
-        ) -> std::result::Result<DatabaseState, rusqlite::Error> {
+        ) -> std::result::Result<Self, rusqlite::Error> {
             let connection = Connection::open(db_path)?;
-            Ok(DatabaseState {
+            Ok(Self {
                 table_name,
                 connection,
             })
@@ -399,7 +348,8 @@ pub mod sqlite_handler {
 
 #[cfg(test)]
 mod tests {
-    use crate::sqlite_handler::{DatabaseState, User};
+    use crate::data::data_forms::User;
+    use crate::sqlite_handler::DatabaseState;
 
     use chrono::Local;
     use env_logger::Builder;

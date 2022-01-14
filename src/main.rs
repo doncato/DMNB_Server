@@ -1,3 +1,6 @@
+mod data;
+pub use crate::data::data_forms;
+
 mod request_handler;
 pub use crate::request_handler::handler;
 
@@ -8,6 +11,7 @@ mod state_engine;
 pub use crate::state_engine::state_functions;
 
 use chrono::{self, Local};
+use confy;
 use env_logger::Builder;
 use log::LevelFilter;
 use rand::Rng;
@@ -20,8 +24,6 @@ use std::{
 };
 
 fn main() {
-    // TODO: Read this path from a config file!
-    let database_path = "./dmnb.sqlite";
     // Build Logger
     Builder::new()
         .format(|buf, record| {
@@ -38,9 +40,16 @@ fn main() {
         .filter(None, LevelFilter::Debug)
         .init();
 
-    log::info!("Started");
+    log::info!("Initializing DMNB Server...");
+    // Read config
+    let cfg: data_forms::ConfigMain = confy::load("dmnb").expect("Failed to load configuration");
+    log::debug!("Read the config successfully");
+    // TODO: Read this path from a config file!
+    let database_path = cfg.file_locations.database_path.clone();
+    log::info!("Starting DMNB Server...");
 
     // Spawn Thread to check whenever a message was expected and received, and delete outtimed user-settings-token
+    // aka. the 'invalid entry collector thread'
     let (tx, rx): (Sender<(String, u32)>, Receiver<(String, u32)>) = mpsc::channel();
     thread::spawn(move || {
         // Get the database connection
@@ -60,6 +69,7 @@ fn main() {
 
         let mut rng = rand::thread_rng();
         let mut alltimes: HashMap<String, u32> = HashMap::new();
+        log::debug!("Starting the invalid entry collector loop...");
         loop {
             // Users System
             loop {
@@ -109,6 +119,6 @@ fn main() {
             }
         }
     });
-
-    handler::run(database_path.to_string(), tx).unwrap_or_else(|err| log::error!("{}", err));
+    log::debug!("Starting the request handler...");
+    handler::run(cfg.file_locations.database_path, tx).unwrap_or_else(|err| log::error!("{}", err));
 }
