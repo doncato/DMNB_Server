@@ -18,7 +18,7 @@ pub mod state_functions {
     };
 
     impl RequestPayload {
-        fn log_audit(self, user: &User) -> Result<(), std::io::Error> {
+        fn log_audit(&self, user: &User) -> Result<(), std::io::Error> {
             // TODO: Read this path from a config file!
             let logpath = "./auditlogs/";
             let fullpath = format!("{}{}.log", logpath, user.clone().id);
