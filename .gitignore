@@ -4,6 +4,6 @@
 # Ignore Cargo.lock
 /Cargo.lock
 # Ignore sqlite database
-/dmnb.sqlite
+./rsc/dmnb.sqlite
 # Ignore auditlogs
-/auditlogs/*
+./rsc/auditlogs/*

@@ -1,5 +1,5 @@
 [package]
-name = "dmnb_server_relais"
+name = "dmnb_server"
 version = "0.1.0"
 authors = ["doncato"]
 edition = "2018"

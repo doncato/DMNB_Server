@@ -18,9 +18,7 @@ pub mod state_functions {
     };
 
     impl RequestPayload {
-        fn log_audit(&self, user: &User) -> Result<(), std::io::Error> {
-            // TODO: Read this path from a config file!
-            let logpath = "./auditlogs/";
+        fn log_audit(&self, user: &User, logpath: &str) -> Result<(), std::io::Error> {
             let fullpath = format!("{}{}.log", logpath, user.clone().id);
             let mut file = OpenOptions::new()
                 .read(true)
@@ -62,7 +60,6 @@ pub mod state_functions {
 
             file.write(content.join("\n").as_bytes())?;
             file.flush()?;
-            //fs::write(fullpath, content.join("\n"))?;
             Ok(())
         }
     }
@@ -77,7 +74,11 @@ pub mod state_functions {
         true
     }
 
-    pub fn custom_log_line(user: &User, message: String) -> Result<(), std::io::Error> {
+    pub fn custom_log_line(
+        user: &User,
+        message: String,
+        logpath: &str,
+    ) -> Result<(), std::io::Error> {
         let time = DateTime::<Utc>::from_utc(Local::now().naive_utc(), Utc).timestamp() + 1;
         let mut ot = HashMap::new();
         ot.insert("TYPE".to_string(), vec!["SYSTEM MESSAGE".to_string()]);
@@ -89,7 +90,7 @@ pub mod state_functions {
             L: None,
             O: Some(ot),
         };
-        pl.log_audit(user)?;
+        pl.log_audit(user, logpath)?;
         Ok(())
     }
 
@@ -100,6 +101,7 @@ pub mod state_functions {
         user: User,
         tx: Sender<(String, u32)>,
         payload: web::Json<RequestPayload>,
+        logpath: &str,
     ) -> HttpResponse {
         if !is_positive(&payload.T) {
             return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(
@@ -126,14 +128,19 @@ pub mod state_functions {
             return HttpResponse::InternalServerError().json(ResponsePayload::status_500());
         }
 
-        if let Err(err) = payload.log_audit(&user) {
+        if let Err(err) = payload.log_audit(&user, logpath) {
             log::error!("{}", err);
             return HttpResponse::InternalServerError().json(ResponsePayload::status_500());
         };
 
         HttpResponse::Ok().json(ResponsePayload::status_200())
     }
-    pub fn sign(user: User, db: DatabaseState, payload: web::Json<RequestPayload>) -> HttpResponse {
+    pub fn sign(
+        user: User,
+        db: DatabaseState,
+        payload: web::Json<RequestPayload>,
+        logpath: &str,
+    ) -> HttpResponse {
         if !is_positive(&payload.T) {
             return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(
                 400,
@@ -154,7 +161,7 @@ pub mod state_functions {
             ));
         };
 
-        match payload.log_audit(&user) {
+        match payload.log_audit(&user, logpath) {
             Err(err) => {
                 log::error!("{}", err);
                 return HttpResponse::InternalServerError().json(ResponsePayload::status_500());
@@ -170,6 +177,7 @@ pub mod state_functions {
         db: DatabaseState,
         tx: Sender<(String, u32)>,
         payload: web::Json<RequestPayload>,
+        logpath: &str,
     ) -> HttpResponse {
         if !is_positive(&payload.T) {
             return HttpResponse::BadRequest().json(ResponsePayload::new_static_message(
@@ -203,7 +211,7 @@ pub mod state_functions {
             return HttpResponse::InternalServerError().json(ResponsePayload::status_500());
         }
         // Log this
-        if let Err(err) = payload.log_audit(&user) {
+        if let Err(err) = payload.log_audit(&user, logpath) {
             log::error!("{}", err);
             return HttpResponse::InternalServerError().json(ResponsePayload::status_500());
         };

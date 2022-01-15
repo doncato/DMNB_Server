@@ -19,9 +19,18 @@ use std::{
     collections::HashMap,
     convert::TryInto,
     io::Write,
+    path::Path,
     sync::mpsc::{self, Receiver, Sender},
     thread,
 };
+
+fn init() -> data_forms::ConfigMain {
+    log::info!("Initializing DMNB Server...");
+    // Read config
+    let cfg: data_forms::ConfigMain = confy::load_path(Path::new("./rsc/dmnb.config")).unwrap();
+    log::debug!("Read the config successfully");
+    return cfg;
+}
 
 fn main() {
     // Build Logger
@@ -40,11 +49,8 @@ fn main() {
         .filter(None, LevelFilter::Debug)
         .init();
 
-    log::info!("Initializing DMNB Server...");
-    // Read config
-    let cfg: data_forms::ConfigMain = confy::load("dmnb").expect("Failed to load configuration");
-    log::debug!("Read the config successfully");
-    // TODO: Read this path from a config file!
+    let cfg = init();
+    let cfg_cloned = cfg.clone();
     let database_path = cfg.file_locations.database_path.clone();
     log::info!("Starting DMNB Server...");
 
@@ -103,6 +109,7 @@ fn main() {
                         state_functions::custom_log_line(
                             &user,
                             "User was marked as deceased due to timeout".to_string(),
+                            &cfg.file_locations.log_folder,
                         )
                         .unwrap();
                     }
@@ -120,5 +127,5 @@ fn main() {
         }
     });
     log::debug!("Starting the request handler...");
-    handler::run(cfg.file_locations.database_path, tx).unwrap_or_else(|err| log::error!("{}", err));
+    handler::run(cfg_cloned, tx).unwrap_or_else(|err| log::error!("{}", err));
 }

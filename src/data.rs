@@ -1,13 +1,15 @@
 // This file contains all structs and enums and associated implementations used in this app
 
 pub mod data_forms {
+    #![allow(non_snake_case)]
+
     use serde_derive::{Deserialize, Serialize};
     use std::collections::HashMap;
     use std::fmt;
     use sysinfo::{System, SystemExt};
 
     // Config structs
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct ConfigFile {
         pub log_folder: String,
         pub database_path: String,
@@ -16,13 +18,13 @@ pub mod data_forms {
     impl ::std::default::Default for ConfigFile {
         fn default() -> Self {
             Self {
-                log_folder: "./auditlogs/".to_string(),
-                database_path: "./dmnb.sqlite".to_string(),
-                email_body_scheme: "./email_body.html".to_string(),
+                log_folder: "./rsc/auditlogs/".to_string(),
+                database_path: "./rsc/dmnb.sqlite".to_string(),
+                email_body_scheme: "./rsc/email_body.html".to_string(),
             }
         }
     }
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct ConfigMain {
         pub file_locations: ConfigFile,
         pub smtp_config: ConfigSmtp,
@@ -35,7 +37,7 @@ pub mod data_forms {
             }
         }
     }
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct ConfigSmtp {
         pub admin_mail_addr: Option<String>,
         pub smtp_server: String,

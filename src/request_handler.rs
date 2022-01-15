@@ -1,5 +1,7 @@
 pub mod handler {
-    use crate::data::data_forms::{RequestPayload, ResponsePayload, ResponsePayloadTypes};
+    use crate::data::data_forms::{
+        ConfigMain, RequestPayload, ResponsePayload, ResponsePayloadTypes,
+    };
     use crate::data_handler::sqlite_handler::DatabaseState;
     use crate::state_engine::state_functions;
 
@@ -212,15 +214,36 @@ pub mod handler {
                     user,
                     req.app_data::<AppState>().unwrap().tx.clone(),
                     info,
+                    &req.app_data::<AppState>()
+                        .unwrap()
+                        .cfg
+                        .file_locations
+                        .log_folder,
                 )
             }
-            "2" => return state_functions::sign(user, db, info),
+            "2" => {
+                return state_functions::sign(
+                    user,
+                    db,
+                    info,
+                    &req.app_data::<AppState>()
+                        .unwrap()
+                        .cfg
+                        .file_locations
+                        .log_folder,
+                )
+            }
             "3" => {
                 return state_functions::ilive(
                     user,
                     db,
                     req.app_data::<AppState>().unwrap().tx.clone(),
                     info,
+                    &req.app_data::<AppState>()
+                        .unwrap()
+                        .cfg
+                        .file_locations
+                        .log_folder,
                 )
             }
             "4" => {
@@ -238,17 +261,19 @@ pub mod handler {
     #[derive(Debug, Clone)]
     pub struct AppState {
         db_path: String,
+        cfg: ConfigMain,
         tx: Sender<(String, u32)>,
         init_time: u32,
     }
     #[actix_web::main]
     pub async fn run(
-        database_path: String,
+        config: ConfigMain,
         time_state_transmitter: Sender<(String, u32)>,
     ) -> std::io::Result<()> {
         // Init Database
         let state = AppState {
-            db_path: database_path,
+            db_path: config.file_locations.database_path.clone(),
+            cfg: config,
             tx: time_state_transmitter,
             init_time: chrono::offset::Utc::now()
                 .timestamp()
