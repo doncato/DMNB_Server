@@ -1,5 +1,5 @@
 # DMNB_Server
-## If you are interested in this project and want to help in any way, feel free to contact me (Contact Info on my Profile)
+## WIP: If you are interested in this project and want to help in any way, feel free to contact me (Contact Info on my Profile)
 # Info
 This is the Server instance of my 'Dead Man Notification Beacon' Project. Which is a webserver to accept POST Requests and act as a virtual Dead Man Switch
 
